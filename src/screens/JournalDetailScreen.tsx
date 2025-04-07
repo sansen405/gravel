@@ -11,14 +11,15 @@ import {
   Alert,
   Modal,
   TextInput,
-  DatePickerAndroid,
   TouchableWithoutFeedback,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute, CommonActions } from '@react-navigation/native';
 import FlippableImage from '../components/FlippableImage';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 interface JournalItem {
   id: string;
@@ -39,6 +40,9 @@ interface ItineraryDay {
   date: string;
   activities: Activity[];
 }
+
+const MINIMUM_DATE = new Date('2000-01-01');
+const MAXIMUM_DATE = new Date(); // Current date
 
 const JournalDetailScreen = () => {
   const route = useRoute();
@@ -70,6 +74,11 @@ const JournalDetailScreen = () => {
   const [editingCaption, setEditingCaption] = useState('');
   const [editingLocation, setEditingLocation] = useState('');
   const [editingDate, setEditingDate] = useState('');
+  const lastTap = React.useRef<number | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [datePickerDayIndex, setDatePickerDayIndex] = useState<number | null>(null);
+  const [tempDate, setTempDate] = useState(new Date());
+  const [showEditDatePicker, setShowEditDatePicker] = useState(false);
 
   const handleDeleteJournal = async () => {
     Alert.alert(
@@ -191,19 +200,26 @@ const JournalDetailScreen = () => {
   };
 
   const formatItineraryAsText = (days: ItineraryDay[]): string => {
-    return days.map((day, index) => {
-      const activities = day.activities.map(activity => {
-        let activityText = `• ${activity.name}`;
-        if (activity.time) activityText += `\n  ${activity.time}`;
-        if (activity.location) activityText += `\n  ${activity.location}`;
+    return days.map((day) => {
+      // Sort activities by time
+      const sortedActivities = [...day.activities].sort((a, b) => {
+        if (!a.time) return 1;
+        if (!b.time) return -1;
+        return a.time.localeCompare(b.time);
+      });
+
+      // Format the day's activities
+      const activities = sortedActivities.map(activity => {
+        let activityText = '';
+        if (activity.time) {
+          activityText += `\t${activity.time}`;
+        }
+        activityText += `\n\t\t${activity.name}${activity.location ? ` || ${activity.location}` : ''}`;
         return activityText;
-      }).join('\n\n');
-      
-      if (index === 0) {
-        return activities;
-      }
-      return `${day.date}\n\n${activities}`;
-    }).join('\n\n───────────────\n\n');
+      }).join('\n');
+
+      return `${day.date}\n${activities}`;
+    }).join('\n\n'); // Two newlines between days for spacing
   };
 
   const handleAddItinerary = async (formattedText: string) => {
@@ -272,6 +288,86 @@ const JournalDetailScreen = () => {
     setEditingCaption(text);
   };
 
+  const handleDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    const currentDate = selectedDate || tempDate;
+    setShowDatePicker(Platform.OS === 'ios');
+    
+    if (datePickerDayIndex === null) return;
+    
+    if (selectedDate) {
+      const updatedDays = [...itineraryDays];
+      updatedDays[datePickerDayIndex].date = currentDate.toLocaleDateString();
+      setItineraryDays(updatedDays);
+      setTempDate(currentDate);
+    }
+    
+    if (Platform.OS === 'android') {
+      setDatePickerDayIndex(null);
+    }
+  };
+
+  const renderDateSelector = (day: ItineraryDay, dayIndex: number) => {
+    const currentDate = day.date ? new Date(day.date) : new Date();
+    
+    return (
+      <View>
+        <TouchableOpacity
+          style={styles.dateSelector}
+          onPress={() => {
+            setTempDate(currentDate);
+            setDatePickerDayIndex(dayIndex);
+            setShowDatePicker(true);
+          }}
+        >
+          <Text style={styles.dateText}>Change Date: {day.date}</Text>
+          <Ionicons name="calendar-outline" size={20} color="#FFFFFF" />
+        </TouchableOpacity>
+
+        {showDatePicker && datePickerDayIndex === dayIndex && (
+          <View style={styles.datePickerContainer}>
+            <DateTimePicker
+              value={tempDate}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={(event, date) => {
+                setShowDatePicker(Platform.OS === 'ios');
+                if (date) {
+                  const updatedDays = [...itineraryDays];
+                  updatedDays[dayIndex].date = date.toLocaleDateString('en-US', {
+                    month: '2-digit',
+                    day: '2-digit',
+                    year: 'numeric'
+                  });
+                  setItineraryDays(updatedDays);
+                  setTempDate(date);
+                }
+                if (Platform.OS === 'android') {
+                  setDatePickerDayIndex(null);
+                }
+              }}
+              style={styles.datePickerStyle}
+              textColor="#FFFFFF"
+              themeVariant="dark"
+              minimumDate={MINIMUM_DATE}
+              maximumDate={MAXIMUM_DATE}
+            />
+            {Platform.OS === 'ios' && (
+              <TouchableOpacity
+                style={styles.datePickerDoneButton}
+                onPress={() => {
+                  setShowDatePicker(false);
+                  setDatePickerDayIndex(null);
+                }}
+              >
+                <Text style={styles.datePickerDoneButtonText}>Done</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
+
   const renderItem = ({ item }: { item: JournalItem }) => {
     if (item.type === 'photo') {
       return (
@@ -325,9 +421,8 @@ const JournalDetailScreen = () => {
         </TouchableWithoutFeedback>
       );
     } else if (item.type === 'itinerary') {
-      const firstDate = item.content.split('\n')[0];
-      const remainingContent = item.content.split('\n').slice(1).join('\n');
-
+      const days = item.content.split('\n'); // Split on single newline
+      
       return (
         <TouchableWithoutFeedback
           onLongPress={() => {
@@ -339,9 +434,12 @@ const JournalDetailScreen = () => {
           <View style={styles.textItemWrapper}>
             <View style={styles.itineraryHeader}>
               <Ionicons name="map-outline" size={20} color="black" />
-              <Text style={styles.itineraryDate}>{firstDate}</Text>
             </View>
-            <Text style={styles.itineraryText}>{remainingContent}</Text>
+            {days.map((day, index) => (
+              <View key={index} style={styles.dayWrapper}>
+                <Text style={styles.itineraryText}>{day}</Text>
+              </View>
+            ))}
             {isImageDeleteMode && (
               <TouchableOpacity
                 style={styles.deleteTextButton}
@@ -555,27 +653,7 @@ const JournalDetailScreen = () => {
 
                   {expandedDay === dayIndex && (
                     <View style={styles.dayContent}>
-                      <TouchableOpacity
-                        style={styles.dateSelector}
-                        onPress={async () => {
-                          try {
-                            const { action, year, month, day } = await DatePickerAndroid.open({
-                              date: new Date(day.date)
-                            });
-                            if (action === DatePickerAndroid.dateSetAction) {
-                              const newDate = new Date(year, month, day);
-                              const updatedDays = [...itineraryDays];
-                              updatedDays[dayIndex].date = newDate.toLocaleDateString();
-                              setItineraryDays(updatedDays);
-                            }
-                          } catch (error) {
-                            console.warn('Cannot open date picker', error);
-                          }
-                        }}
-                      >
-                        <Text style={styles.dateText}>Change Date</Text>
-                        <Ionicons name="calendar-outline" size={20} color="#FFFFFF" />
-                      </TouchableOpacity>
+                      {renderDateSelector(day, dayIndex)}
 
                       {day.activities.map((activity, activityIndex) => (
                         <View key={activityIndex}>
@@ -695,6 +773,7 @@ const JournalDetailScreen = () => {
                 onPress={() => {
                   setShowEditModal(false);
                   setEditingImage(null);
+                  setShowEditDatePicker(false);
                 }}
                 style={styles.closeButton}
               >
@@ -727,13 +806,51 @@ const JournalDetailScreen = () => {
 
               <View style={styles.editField}>
                 <Text style={styles.editFieldLabel}>Date</Text>
-                <TextInput
-                  style={styles.editInput}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor="#666666"
-                  value={editingDate}
-                  onChangeText={setEditingDate}
-                />
+                <TouchableOpacity
+                  style={styles.dateSelector}
+                  onPress={() => setShowEditDatePicker(true)}
+                >
+                  <Text style={styles.dateText}>
+                    {editingDate ? new Date(editingDate).toLocaleDateString('en-US', {
+                      month: '2-digit',
+                      day: '2-digit',
+                      year: 'numeric'
+                    }) : 'Select Date'}
+                  </Text>
+                  <Ionicons name="calendar-outline" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+
+                {showEditDatePicker && (
+                  <View style={styles.datePickerContainer}>
+                    <DateTimePicker
+                      value={editingDate ? new Date(editingDate) : new Date()}
+                      mode="date"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={(event, date) => {
+                        setShowEditDatePicker(Platform.OS === 'ios');
+                        if (date) {
+                          setEditingDate(date.toISOString());
+                        }
+                        if (Platform.OS === 'android') {
+                          setShowEditDatePicker(false);
+                        }
+                      }}
+                      style={styles.datePickerStyle}
+                      textColor="#FFFFFF"
+                      themeVariant="dark"
+                      minimumDate={MINIMUM_DATE}
+                      maximumDate={MAXIMUM_DATE}
+                    />
+                    {Platform.OS === 'ios' && (
+                      <TouchableOpacity
+                        style={styles.datePickerDoneButton}
+                        onPress={() => setShowEditDatePicker(false)}
+                      >
+                        <Text style={styles.datePickerDoneButtonText}>Done</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
               </View>
             </View>
 
@@ -746,6 +863,17 @@ const JournalDetailScreen = () => {
           </View>
         </View>
       </Modal>
+
+      {showDatePicker && (
+        <DateTimePicker
+          testID="dateTimePicker"
+          value={tempDate}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleDateChange}
+          style={Platform.OS === 'ios' ? styles.iosDatePicker : undefined}
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -874,8 +1002,9 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontSize: 16,
     fontFamily: 'Courier',
-    lineHeight: 24,
-    whiteSpace: 'pre-line',
+    lineHeight: 20,
+    whiteSpace: 'pre',
+    paddingHorizontal: 10,
   },
   modalOverlay: {
     flex: 1,
@@ -971,7 +1100,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#333333',
     padding: 12,
     borderRadius: 8,
-    marginBottom: 15,
+    marginTop: 5,
   },
   activityContainer: {
     backgroundColor: '#333333',
@@ -1068,21 +1197,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Courier',
     marginLeft: 10,
   },
-  itineraryText: {
-    color: '#000000',
-    fontSize: 16,
-    fontFamily: 'Courier',
-    lineHeight: 24,
-    whiteSpace: 'pre-line',
-    marginTop: 35,
-  },
   editModalContent: {
     backgroundColor: '#111111',
     borderRadius: 12,
     padding: 20,
     marginTop: 50,
     margin: 20,
-    maxHeight: 400,
+    maxHeight: '80%',
   },
   editFieldsContainer: {
     marginVertical: 10,
@@ -1104,6 +1225,53 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontFamily: 'Inter_400Regular',
     fontSize: 14,
+  },
+  dayWrapper: {
+    width: '100%',
+    marginBottom: 10,
+  },
+  dividerLine: {
+    height: 1,
+    backgroundColor: '#000000',
+    width: '100%',
+    alignSelf: 'center',
+    marginBottom: 10,
+    opacity: 0.2,
+  },
+  dateText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontFamily: 'Inter_400Regular',
+  },
+  iosDatePicker: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+  },
+  datePickerContainer: {
+    backgroundColor: '#222222',
+    borderRadius: 8,
+    marginTop: 10,
+    padding: 10,
+    alignItems: 'center',
+  },
+  datePickerStyle: {
+    width: Platform.OS === 'ios' ? '100%' : undefined,
+    height: Platform.OS === 'ios' ? 200 : undefined,
+    backgroundColor: '#222222',
+  },
+  datePickerDoneButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    backgroundColor: '#333333',
+    borderRadius: 8,
+    marginTop: 10,
+    width: '100%',
+    alignItems: 'center',
+  },
+  datePickerDoneButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontFamily: 'Inter_500Medium',
   },
 });
 
