@@ -96,4 +96,60 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  title: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 24,
+    color: '#ffffff',
+  },
+  subtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 16,
+    color: '#a0a0a0',
+  },
+  name: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 24,
+    color: '#ffffff',
+  },
+  username: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 16,
+    color: '#a0a0a0',
+  },
+  journalTitle: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 18,
+    color: '#ffffff',
+  },
+  journalLocation: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: '#a0a0a0',
+  },
+  buttonText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 16,
+    color: '#ffffff',
+  },
+  input: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 16,
+    color: '#ffffff',
+  },
+  statNumber: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 18,
+    color: '#ffffff',
+  },
+  statLabel: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: '#a0a0a0',
+  },
+  quote: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 16,
+    fontStyle: 'italic',
+    color: '#e0e0e0',
+  },
 }); 

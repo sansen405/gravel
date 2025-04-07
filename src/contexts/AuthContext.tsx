@@ -1,115 +1,115 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User } from 'firebase/auth';
-import { auth, db } from '../config/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Alert } from 'react-native';
+
+interface User {
+  id: string;
+  username: string;
+  displayName: string;
+  profileImage?: string;
+  bio?: string;
+}
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  register: (email: string, password: string, username: string, displayName: string) => Promise<User>;
+  login: () => Promise<void>;
   logout: () => Promise<void>;
-  setDevUser: (email: string) => void;
+  updateProfile: (data: Partial<User>) => Promise<void>;
 }
 
-export const AuthContext = createContext<AuthContextType>({
-  user: null,
-  loading: true,
-  register: async () => null,
-  logout: async () => {},
-  setDevUser: () => {},
-});
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+    const loadUser = async () => {
       try {
-        if (user) {
-          // Get additional user data from Firestore
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          if (userDoc.exists()) {
-            setUser(user);
-          } else {
-            // If user exists in Auth but not in Firestore, sign them out
-            await auth.signOut();
-            setUser(null);
-          }
-        } else {
-          setUser(null);
-        }
-      } catch (error) {
-        console.error('Error fetching user data:', error);
+        // Clear any existing user data on app launch
+        await AsyncStorage.removeItem('user');
         setUser(null);
+      } catch (error) {
+        console.error('Error clearing user:', error);
       } finally {
         setLoading(false);
       }
-    });
+    };
 
-    return unsubscribe;
+    loadUser();
   }, []);
 
-  const setDevUser = (email: string) => {
-    const devUser = {
-      uid: 'dev-user',
-      email: email || 'dev@example.com',
-      displayName: 'Developer',
-    } as User;
-    setUser(devUser);
-    setLoading(false);
+  const login = async () => {
+    try {
+      // Check if we already have a dev user stored
+      const existingDevUser = await AsyncStorage.getItem('devUser');
+      
+      if (existingDevUser) {
+        // If we have an existing dev user, use that
+        const devUser = JSON.parse(existingDevUser);
+        await AsyncStorage.setItem('user', JSON.stringify(devUser));
+        setUser(devUser);
+      } else {
+        // If no existing dev user, create a new one
+        const newDevUser = {
+          id: 'dev-123',
+          username: 'developer',
+          displayName: 'Developer Mode',
+          bio: 'Testing the app',
+          profileImage: null,
+        };
+        // Store it both as current user and save it as dev user
+        await AsyncStorage.setItem('devUser', JSON.stringify(newDevUser));
+        await AsyncStorage.setItem('user', JSON.stringify(newDevUser));
+        setUser(newDevUser);
+      }
+    } catch (error) {
+      console.error('Error during login:', error);
+    }
   };
 
   const logout = async () => {
     try {
-      await auth.signOut();
+      // Only remove the current user, keep the dev user data
+      await AsyncStorage.removeItem('user');
       setUser(null);
     } catch (error) {
-      console.error('Error signing out:', error);
-      throw error;
+      console.error('Error during logout:', error);
     }
   };
 
-  const register = async (email: string, password: string, username: string, displayName: string) => {
+  const updateProfile = async (data: Partial<User>) => {
+    if (!user) return;
+    
     try {
-      // Create auth user
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      
-      // Create user document in Firestore
-      await setDoc(doc(db, 'users', userCredential.user.uid), {
-        username,
-        displayName,
-        email,
-        createdAt: new Date(),
-        followers: [],
-        following: [],
-      });
-
-      return userCredential.user;
+      const updatedUser = { ...user, ...data };
+      // Update both current user and dev user
+      await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+      await AsyncStorage.setItem('devUser', JSON.stringify(updatedUser));
+      setUser(updatedUser);
     } catch (error) {
-      throw error;
+      console.error('Error updating profile:', error);
+      Alert.alert('Error', 'Failed to update profile');
     }
-  };
-
-  const value = {
-    user,
-    loading,
-    register,
-    logout,
-    setDevUser,
   };
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={{ 
+      user, 
+      loading, 
+      login, 
+      logout, 
+      updateProfile 
+    }}>
       {children}
     </AuthContext.Provider>
   );
-}
+};
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
