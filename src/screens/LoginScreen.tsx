@@ -9,22 +9,25 @@ import {
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 
-const LoginScreen = () => {
-  const { login } = useAuth();
+const LoginScreen = ({ navigation }) => {
+  const { login, loading, error } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   const handleLogin = async () => {
-    if (password === 'dev') {
-      await login();
-    } else {
-      Alert.alert('Error', 'Invalid developer password');
+    if (!email || !password) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
     }
+    await login(email, password);
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Gravel</Text>
+      <Text style={styles.title}>gravel</Text>
+      
+      {error && <Text style={styles.errorText}>{error}</Text>}
+      
       <TextInput
         style={styles.input}
         placeholder="Email"
@@ -32,7 +35,9 @@ const LoginScreen = () => {
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
+        keyboardType="email-address"
       />
+
       <TextInput
         style={styles.input}
         placeholder="Password"
@@ -41,8 +46,24 @@ const LoginScreen = () => {
         onChangeText={setPassword}
         secureTextEntry
       />
-      <TouchableOpacity style={styles.button} onPress={handleLogin}>
-        <Text style={styles.buttonText}>Login</Text>
+
+      <TouchableOpacity 
+        style={styles.button}
+        onPress={handleLogin}
+        disabled={loading}
+      >
+        <Text style={styles.buttonText}>
+          {loading ? 'Logging in...' : 'Login'}
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity 
+        style={styles.linkButton}
+        onPress={() => navigation.navigate('Register')}
+      >
+        <Text style={styles.linkText}>
+          Don't have an account? Sign up
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -55,13 +76,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    marginTop: -60,
   },
   title: {
     fontSize: 32,
     color: '#FFFFFF',
     fontFamily: 'Inter_600SemiBold',
     marginBottom: 40,
+  },
+  errorText: {
+    color: '#ff4444',
+    marginBottom: 20,
   },
   input: {
     width: '100%',
@@ -84,6 +108,14 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
+  },
+  linkButton: {
+    marginTop: 20,
+  },
+  linkText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
   },
 });
 

@@ -1,116 +1,136 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
-
-interface User {
-  id: string;
-  username: string;
-  displayName: string;
-  profileImage?: string;
-  bio?: string;
-}
+import { supabase } from '../lib/supabase';
+import { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
   user: User | null;
+  session: Session | null;
   loading: boolean;
-  login: () => Promise<void>;
+  register: (email: string, password: string, username: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
-  updateProfile: (data: Partial<User>) => Promise<void>;
+  error: string | null;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType>({} as AuthContextType);
+
+export const useAuth = () => {
+  return useContext(AuthContext);
+};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadUser = async () => {
-      try {
-        // Clear any existing user data on app launch
-        await AsyncStorage.removeItem('user');
-        setUser(null);
-      } catch (error) {
-        console.error('Error clearing user:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+    // Check active sessions and subscribe to auth changes
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
 
-    loadUser();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const login = async () => {
+  const register = async (email: string, password: string, username: string) => {
     try {
-      // Check if we already have a dev user stored
-      const existingDevUser = await AsyncStorage.getItem('devUser');
+      setError(null);
+      setLoading(true);
       
-      if (existingDevUser) {
-        // If we have an existing dev user, use that
-        const devUser = JSON.parse(existingDevUser);
-        await AsyncStorage.setItem('user', JSON.stringify(devUser));
-        setUser(devUser);
-      } else {
-        // If no existing dev user, create a new one
-        const newDevUser = {
-          id: 'dev-123',
-          username: 'developer',
-          displayName: 'Developer Mode',
-          bio: 'Testing the app',
-          profileImage: null,
-        };
-        // Store it both as current user and save it as dev user
-        await AsyncStorage.setItem('devUser', JSON.stringify(newDevUser));
-        await AsyncStorage.setItem('user', JSON.stringify(newDevUser));
-        setUser(newDevUser);
+      const { error: signUpError, data } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username: username
+          }
+        }
+      });
+      
+      if (signUpError) throw signUpError;
+
+      if (data?.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert([
+            {
+              id: data.user.id,
+              username,
+              display_name: username,
+              created_at: new Date().toISOString()
+            }
+          ])
+          .select();
+
+        if (profileError) throw profileError;
+
+        setUser(data.user);
+        return true; // Return success
       }
+      return false;
     } catch (error) {
-      console.error('Error during login:', error);
+      setError(error.message);
+      Alert.alert('Registration Error', error.message || 'An error occurred during registration');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const login = async (email: string, password: string) => {
+    try {
+      setError(null);
+      setLoading(true);
+      const { error, data } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      setError(error.message);
+      Alert.alert('Login Error', error.message);
+      return false;
+    } finally {
+      setLoading(false);
     }
   };
 
   const logout = async () => {
     try {
-      // Only remove the current user, keep the dev user data
-      await AsyncStorage.removeItem('user');
-      setUser(null);
+      setError(null);
+      setLoading(true);
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
     } catch (error) {
-      console.error('Error during logout:', error);
-    }
-  };
-
-  const updateProfile = async (data: Partial<User>) => {
-    if (!user) return;
-    
-    try {
-      const updatedUser = { ...user, ...data };
-      // Update both current user and dev user
-      await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
-      await AsyncStorage.setItem('devUser', JSON.stringify(updatedUser));
-      setUser(updatedUser);
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      Alert.alert('Error', 'Failed to update profile');
+      setError(error.message);
+      Alert.alert('Logout Error', error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      loading, 
-      login, 
-      logout, 
-      updateProfile 
+    <AuthContext.Provider value={{
+      user,
+      session,
+      loading,
+      register,
+      login,
+      logout,
+      error
     }}>
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 }; 
