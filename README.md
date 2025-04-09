@@ -1,24 +1,18 @@
-# Travel Journal App
+# GRAVEL
 
-A beautiful mobile application for documenting your travel memories. Built with React Native and Expo.
+A minimalistic and asthetic travel journal social media mobile app!
 
 ## Features
 
 - Create and manage travel journals
-- Upload photos from your adventures
-- Organize memories by location
-- Beautiful, modern UI with smooth animations
+  - Upload photos from your adventures
+  - Write quick notes on your trips
+  - Create comprehensive itineraries
+  - Leave reviews for local businesses
+- Feed where others can view your travel images and journal
+- Explore page where you can search for journals in your desired travel spot
+- Achievements page that reward frequent posting and travel
 - Cross-platform support (iOS & Android)
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js (v14 or higher)
-- npm or yarn
-- Expo CLI
-- iOS Simulator (for iOS development)
-- Android Studio (for Android development)
 
 ### Installation
 
@@ -44,14 +38,3 @@ npx expo start
 - `npm start` or `yarn start` - Start the Expo development server
 - `npm run ios` or `yarn ios` - Run on iOS simulator
 - `npm run android` or `yarn android` - Run on Android emulator
-
-## Built With
-
-- [React Native](https://reactnative.dev/)
-- [Expo](https://expo.dev/)
-- [React Navigation](https://reactnavigation.org/)
-- [Expo Image Picker](https://docs.expo.dev/versions/latest/sdk/imagepicker/)
-
-## License
-
-This project is licensed under the MIT License. 
